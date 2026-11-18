@@ -25,6 +25,20 @@ export interface DrawRecord {
   participantName?: string;
   prizeId?: string;
   prizeName: string;
+  mode?: DrawMode;
 }
 
-export type DrawMode = 'participants' | 'prizes'; // 'participants': 輪盤轉人抽選定獎項; 'prizes': 輪盤轉獎品
+export type DrawMode = 'participants' | 'prizes' | 'qa'; // 'participants': 抽參與者; 'prizes': 抽獎項; 'qa': 上台回答問題
+
+export interface QAModeConfig {
+  type: 'range' | 'custom';
+  rangeStart: number;
+  rangeEnd: number;
+  customInput: string; // e.g. "1, 3, 7, 10"
+  padDigits: number;
+  prefix: string;
+  excludeCalled: boolean;
+  calledCodes: string[];
+  questionTitle: string; // e.g. "第 1 題回答者"
+}
+

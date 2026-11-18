@@ -71,25 +71,33 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center bg-slate-900 border border-slate-800 p-1 rounded-2xl text-xs font-semibold shadow-inner">
           <button
             onClick={() => onChangeMode('participants')}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
               mode === 'participants'
                 ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-md'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <span>🎯 抽參與者模式</span>
-            <span className="text-[10px] opacity-80 hidden lg:inline">（輪盤為人名/編號）</span>
+            <span>🎯 抽名單編號</span>
           </button>
           <button
             onClick={() => onChangeMode('prizes')}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
               mode === 'prizes'
                 ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 shadow-md font-bold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <span>🎁 抽獎項模式</span>
-            <span className="text-[10px] opacity-80 hidden lg:inline">（輪盤為各大獎項）</span>
+            <span>🎁 抽大獎</span>
+          </button>
+          <button
+            onClick={() => onChangeMode('qa')}
+            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+              mode === 'qa'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <span>🎤 上台回答問題</span>
           </button>
         </div>
 

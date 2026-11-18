@@ -10,6 +10,7 @@ import {
   Search,
 } from 'lucide-react';
 import { Participant } from '../types';
+import { parseCustomNumbers } from '../utils/numberParser';
 
 interface ParticipantManagerProps {
   participants: Participant[];
@@ -29,10 +30,12 @@ export const ParticipantManager: React.FC<ParticipantManagerProps> = ({
   const [newName, setNewName] = useState('');
 
   // Quick range generator form
+  const [genType, setGenType] = useState<'range' | 'custom'>('range');
   const [rangeStart, setRangeStart] = useState<number>(1);
   const [rangeEnd, setRangeEnd] = useState<number>(50);
+  const [customNumberText, setCustomNumberText] = useState<string>('1, 3, 7, 10');
   const [rangePrefix, setRangePrefix] = useState<string>('');
-  const [rangePad, setRangePad] = useState<number>(3);
+  const [rangePad, setRangePad] = useState<number>(0);
 
   // Bulk paste form
   const [bulkText, setBulkText] = useState('');
@@ -64,32 +67,50 @@ export const ParticipantManager: React.FC<ParticipantManagerProps> = ({
   };
 
   const handleGenerateRange = () => {
-    if (rangeStart > rangeEnd) {
-      alert('起始號碼不能大於結束號碼！');
-      return;
-    }
-    const count = rangeEnd - rangeStart + 1;
-    if (count > 2000) {
-      alert('單次生成號碼請不要超過 2000 筆！');
-      return;
-    }
+    let newItems: Participant[] = [];
 
-    const newItems: Participant[] = [];
-    for (let i = rangeStart; i <= rangeEnd; i++) {
-      const codeStr = rangePad > 0 ? i.toString().padStart(rangePad, '0') : i.toString();
-      const finalCode = rangePrefix ? `${rangePrefix}${codeStr}` : codeStr;
-      newItems.push({
-        id: `p-${Date.now()}-${i}`,
-        code: finalCode,
-        name: `${finalCode} 號`,
+    if (genType === 'range') {
+      if (rangeStart > rangeEnd) {
+        alert('起始號碼不能大於結束號碼！');
+        return;
+      }
+      const count = rangeEnd - rangeStart + 1;
+      if (count > 2000) {
+        alert('單次生成號碼請不要超過 2000 筆！');
+        return;
+      }
+
+      for (let i = rangeStart; i <= rangeEnd; i++) {
+        const codeStr = rangePad > 0 ? i.toString().padStart(rangePad, '0') : i.toString();
+        const finalCode = rangePrefix ? `${rangePrefix}${codeStr}` : codeStr;
+        newItems.push({
+          id: `p-${Date.now()}-${i}`,
+          code: finalCode,
+          name: `${finalCode} 號`,
+          isWon: false,
+        });
+      }
+    } else {
+      // Custom numbers e.g. "1, 3, 7, 10"
+      const codes = parseCustomNumbers(customNumberText, rangePad, rangePrefix);
+      if (codes.length === 0) {
+        alert('請輸入有效的自訂號碼，例如 1, 3, 7, 10！');
+        return;
+      }
+      newItems = codes.map((c, idx) => ({
+        id: `p-${Date.now()}-${idx}`,
+        code: c,
+        name: `${c} 號`,
         isWon: false,
-      });
+      }));
     }
 
-    if (confirm(`即將覆蓋並設定為 ${count} 個連續編號 (${rangeStart} ~ ${rangeEnd})，確定嗎？`)) {
+    if (confirm(`即將設定 ${newItems.length} 個抽獎號碼，是否直接覆蓋目前名單？（點「取消」則保留原有名單並追加於後方）`)) {
       onUpdateParticipants(newItems);
-      setActiveTab('list');
+    } else {
+      onUpdateParticipants([...participants, ...newItems]);
     }
+    setActiveTab('list');
   };
 
   const handleBulkImport = () => {
@@ -204,28 +225,65 @@ export const ParticipantManager: React.FC<ParticipantManagerProps> = ({
       {activeTab === 'quick-range' && (
         <div className="py-4 space-y-4 animate-in fade-in duration-200">
           <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 space-y-3">
-            <h4 className="text-sm font-semibold text-amber-300 flex items-center gap-1.5">
-              <ListPlus className="w-4 h-4" /> 快速生成自訂連續號碼
-            </h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-amber-300 flex items-center gap-1.5">
+                <ListPlus className="w-4 h-4" /> 快速號碼生成
+              </h4>
+              <div className="flex gap-1 text-[11px] bg-slate-900/80 p-0.5 rounded-lg border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setGenType('range')}
+                  className={`px-2 py-0.5 rounded ${genType === 'range' ? 'bg-rose-600 text-white font-bold' : 'text-slate-400'}`}
+                >
+                  連續區間
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGenType('custom')}
+                  className={`px-2 py-0.5 rounded ${genType === 'custom' ? 'bg-rose-600 text-white font-bold' : 'text-slate-400'}`}
+                >
+                  指定號碼
+                </button>
+              </div>
+            </div>
+
+            {genType === 'range' ? (
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label className="block text-slate-400 mb-1">起始號碼</label>
+                  <input
+                    type="number"
+                    value={rangeStart}
+                    onChange={(e) => setRangeStart(parseInt(e.target.value) || 1)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">結束號碼</label>
+                  <input
+                    type="number"
+                    value={rangeEnd}
+                    onChange={(e) => setRangeEnd(parseInt(e.target.value) || 1)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono"
+                  />
+                </div>
+              </div>
+            ) : (
               <div>
-                <label className="block text-slate-400 mb-1">起始號碼</label>
+                <label className="block text-slate-400 text-xs mb-1">
+                  輸入指定號碼（逗號、空白隔開，如 1, 3, 7, 10 或 1-5, 8）
+                </label>
                 <input
-                  type="number"
-                  value={rangeStart}
-                  onChange={(e) => setRangeStart(parseInt(e.target.value) || 1)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100"
+                  type="text"
+                  value={customNumberText}
+                  onChange={(e) => setCustomNumberText(e.target.value)}
+                  placeholder="例如：1, 3, 7, 10"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-rose-500"
                 />
               </div>
-              <div>
-                <label className="block text-slate-400 mb-1">結束號碼</label>
-                <input
-                  type="number"
-                  value={rangeEnd}
-                  onChange={(e) => setRangeEnd(parseInt(e.target.value) || 1)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100"
-                />
-              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="block text-slate-400 mb-1">前綴詞 (選填)</label>
                 <input
@@ -251,24 +309,11 @@ export const ParticipantManager: React.FC<ParticipantManagerProps> = ({
               </div>
             </div>
 
-            <p className="text-[11px] text-slate-400">
-              預覽前三筆：
-              <span className="text-amber-300 ml-1">
-                {rangePrefix}
-                {rangePad > 0 ? rangeStart.toString().padStart(rangePad, '0') : rangeStart}、
-                {rangePrefix}
-                {rangePad > 0 ? (rangeStart + 1).toString().padStart(rangePad, '0') : rangeStart + 1}、
-                {rangePrefix}
-                {rangePad > 0 ? (rangeStart + 2).toString().padStart(rangePad, '0') : rangeStart + 2}
-                ...
-              </span>
-            </p>
-
             <button
               onClick={handleGenerateRange}
               className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-sm shadow transition"
             >
-              一鍵生成全部編號
+              設定抽獎號碼
             </button>
           </div>
         </div>

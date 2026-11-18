@@ -1,4 +1,4 @@
-import { Participant, Prize, DrawRecord, DrawMode } from '../types';
+import { Participant, Prize, DrawRecord, DrawMode, QAModeConfig } from '../types';
 
 const STORAGE_KEYS = {
   PARTICIPANTS: 'lucky_picker_participants',
@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   RECORDS: 'lucky_picker_records',
   MODE: 'lucky_picker_mode',
   SOUND: 'lucky_picker_sound_enabled',
+  QA_CONFIG: 'lucky_picker_qa_config',
 };
 
 export const DEFAULT_PRIZES: Prize[] = [
@@ -81,10 +82,38 @@ export function saveRecords(records: DrawRecord[]) {
   }
 }
 
+export const DEFAULT_QA_CONFIG: QAModeConfig = {
+  type: 'range',
+  rangeStart: 1,
+  rangeEnd: 30,
+  customInput: '1, 3, 7, 10, 15, 22',
+  padDigits: 0,
+  prefix: '',
+  excludeCalled: true,
+  calledCodes: [],
+  questionTitle: '第 1 題回答者',
+};
+
+export function loadQAConfig(): QAModeConfig {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.QA_CONFIG);
+    if (!raw) return DEFAULT_QA_CONFIG;
+    return { ...DEFAULT_QA_CONFIG, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_QA_CONFIG;
+  }
+}
+
+export function saveQAConfig(config: QAModeConfig) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.QA_CONFIG, JSON.stringify(config));
+  } catch {}
+}
+
 export function loadDrawMode(): DrawMode {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.MODE);
-    if (raw === 'prizes' || raw === 'participants') return raw;
+    if (raw === 'prizes' || raw === 'participants' || raw === 'qa') return raw;
     return 'participants';
   } catch {
     return 'participants';

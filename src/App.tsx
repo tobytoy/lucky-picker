@@ -3,6 +3,7 @@ import { Navbar } from './components/Navbar';
 import { Wheel, WheelItem } from './components/Wheel';
 import { ParticipantManager } from './components/ParticipantManager';
 import { PrizeManager } from './components/PrizeManager';
+import { QAControlPanel } from './components/QAControlPanel';
 import { WinnerModal } from './components/WinnerModal';
 import { HistoryModal } from './components/HistoryModal';
 import {
@@ -10,6 +11,7 @@ import {
   Prize,
   DrawRecord,
   DrawMode,
+  QAModeConfig,
 } from './types';
 import {
   loadParticipants,
@@ -22,11 +24,14 @@ import {
   saveDrawMode,
   loadSoundSetting,
   saveSoundSetting,
+  loadQAConfig,
+  saveQAConfig,
   DEFAULT_PARTICIPANTS,
   DEFAULT_PRIZES,
 } from './utils/storage';
+import { generateRangeNumbers, parseCustomNumbers } from './utils/numberParser';
 import { soundManager } from './utils/audio';
-import { Sparkles, Award } from 'lucide-react';
+import { Sparkles, Award, Mic } from 'lucide-react';
 
 export const App: React.FC = () => {
   // Main states
@@ -35,6 +40,7 @@ export const App: React.FC = () => {
   const [records, setRecords] = useState<DrawRecord[]>(loadRecords);
   const [drawMode, setDrawMode] = useState<DrawMode>(loadDrawMode);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(loadSoundSetting);
+  const [qaConfig, setQaConfig] = useState<QAModeConfig>(loadQAConfig);
 
   // Selected Prize ID for 'participants' mode
   const [selectedPrizeId, setSelectedPrizeId] = useState<string | null>(() => {
@@ -52,7 +58,7 @@ export const App: React.FC = () => {
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
   // Mobile active panel toggle
-  const [mobileTab, setMobileTab] = useState<'wheel' | 'participants' | 'prizes'>('wheel');
+  const [mobileTab, setMobileTab] = useState<'wheel' | 'participants' | 'prizes' | 'qa'>('wheel');
 
   // Sync sounds
   useEffect(() => {
@@ -77,6 +83,10 @@ export const App: React.FC = () => {
     saveDrawMode(drawMode);
   }, [drawMode]);
 
+  useEffect(() => {
+    saveQAConfig(qaConfig);
+  }, [qaConfig]);
+
   // Current active prize object
   const currentPrize = useMemo(() => {
     return prizes.find((p) => p.id === selectedPrizeId) || null;
@@ -92,8 +102,40 @@ export const App: React.FC = () => {
     }
   }, [prizes, currentPrize]);
 
+  // Active candidates for QA Mode
+  const qaCandidates = useMemo(() => {
+    let list: string[] = [];
+    if (qaConfig.type === 'range') {
+      list = generateRangeNumbers(
+        qaConfig.rangeStart,
+        qaConfig.rangeEnd,
+        qaConfig.padDigits,
+        qaConfig.prefix
+      );
+    } else {
+      list = parseCustomNumbers(
+        qaConfig.customInput,
+        qaConfig.padDigits,
+        qaConfig.prefix
+      );
+    }
+
+    if (qaConfig.excludeCalled) {
+      return list.filter((code) => !qaConfig.calledCodes.includes(code));
+    }
+    return list;
+  }, [qaConfig]);
+
   // Compute Wheel Items based on current DrawMode
   const wheelItems: WheelItem[] = useMemo(() => {
+    if (drawMode === 'qa') {
+      return qaCandidates.map((code) => ({
+        id: `qa-${code}`,
+        label: code,
+        subLabel: '號',
+      }));
+    }
+
     if (drawMode === 'participants') {
       const pool = excludeWon ? participants.filter((p) => !p.isWon) : participants;
       return pool.map((p) => ({
@@ -112,7 +154,7 @@ export const App: React.FC = () => {
         color: p.color,
       }));
     }
-  }, [drawMode, participants, prizes, excludeWon]);
+  }, [drawMode, participants, prizes, excludeWon, qaCandidates]);
 
   // Handle Wheel Finished
   const handleWheelFinish = (winner: WheelItem) => {
@@ -120,7 +162,20 @@ export const App: React.FC = () => {
 
     const now = new Date().toLocaleTimeString('zh-TW', { hour12: false });
 
-    if (drawMode === 'participants') {
+    if (drawMode === 'qa') {
+      const title = qaConfig.questionTitle.trim() || '上台回答問題';
+      const pRecord: DrawRecord = {
+        id: `rec-${Date.now()}`,
+        timestamp: now,
+        participantCode: `${winner.label} 號`,
+        participantName: '回答代表',
+        prizeName: `[問答] ${title}`,
+        mode: 'qa',
+      };
+
+      setRecords((prev) => [pRecord, ...prev]);
+      setWinnerModalOpen(true);
+    } else if (drawMode === 'participants') {
       const prizeName = currentPrize ? currentPrize.name : '未指定獎項';
       const pRecord: DrawRecord = {
         id: `rec-${Date.now()}`,
@@ -130,6 +185,7 @@ export const App: React.FC = () => {
         participantName: winner.subLabel,
         prizeId: currentPrize?.id,
         prizeName,
+        mode: 'participants',
       };
 
       // Add to records
@@ -157,6 +213,7 @@ export const App: React.FC = () => {
         participantName: '幸運兒',
         prizeId: winner.id,
         prizeName,
+        mode: 'prizes',
       };
 
       setRecords((prev) => [pRecord, ...prev]);
@@ -172,32 +229,51 @@ export const App: React.FC = () => {
     }
   };
 
-  // Participant Winner Modal: Mark participant as won (exclude)
+  // Winner Modal confirmation
   const handleConfirmRemoveWinner = () => {
     if (!lastWinnerItem) return;
-    setParticipants((prev) =>
-      prev.map((p) => (p.id === lastWinnerItem.id ? { ...p, isWon: true } : p))
-    );
+
+    if (drawMode === 'qa') {
+      // In QA mode, record code into calledCodes
+      setQaConfig((prev) => ({
+        ...prev,
+        calledCodes: Array.from(new Set([...prev.calledCodes, lastWinnerItem.label])),
+      }));
+    } else {
+      // In participants mode, mark isWon: true
+      setParticipants((prev) =>
+        prev.map((p) => (p.id === lastWinnerItem.id ? { ...p, isWon: true } : p))
+      );
+    }
   };
 
   // Rollback a draw record (restore prize count and unwon state)
   const handleRollbackRecord = (record: DrawRecord) => {
-    // Restore participant if found
-    if (record.participantId) {
-      setParticipants((prev) =>
-        prev.map((p) => (p.id === record.participantId ? { ...p, isWon: false } : p))
-      );
+    if (record.mode === 'qa') {
+      // Clean up number
+      const code = record.participantCode.replace(/\s*號$/, '');
+      setQaConfig((prev) => ({
+        ...prev,
+        calledCodes: prev.calledCodes.filter((c) => c !== code),
+      }));
     } else {
-      setParticipants((prev) =>
-        prev.map((p) => (p.code === record.participantCode ? { ...p, isWon: false } : p))
-      );
-    }
+      // Restore participant if found
+      if (record.participantId) {
+        setParticipants((prev) =>
+          prev.map((p) => (p.id === record.participantId ? { ...p, isWon: false } : p))
+        );
+      } else {
+        setParticipants((prev) =>
+          prev.map((p) => (p.code === record.participantCode ? { ...p, isWon: false } : p))
+        );
+      }
 
-    // Restore prize remaining count
-    if (record.prizeId) {
-      setPrizes((prev) =>
-        prev.map((p) => (p.id === record.prizeId ? { ...p, remaining: p.remaining + 1 } : p))
-      );
+      // Restore prize remaining count
+      if (record.prizeId) {
+        setPrizes((prev) =>
+          prev.map((p) => (p.id === record.prizeId ? { ...p, remaining: p.remaining + 1 } : p))
+        );
+      }
     }
 
     // Delete record
@@ -210,12 +286,37 @@ export const App: React.FC = () => {
     setPrizes(DEFAULT_PRIZES);
     setRecords([]);
     setSelectedPrizeId('prize-1');
+    setQaConfig({
+      type: 'range',
+      rangeStart: 1,
+      rangeEnd: 30,
+      customInput: '1, 3, 7, 10, 15, 22',
+      padDigits: 0,
+      prefix: '',
+      excludeCalled: true,
+      calledCodes: [],
+      questionTitle: '第 1 題回答者',
+    });
   };
 
   // Wheel is disabled if no items or if in participant mode and no remaining prize
   const isWheelDisabled =
     wheelItems.length < 2 ||
     (drawMode === 'participants' && currentPrize !== null && currentPrize.remaining <= 0);
+
+  // Prize object passed to winner modal
+  const modalPrize = useMemo(() => {
+    if (drawMode === 'qa') {
+      return {
+        id: 'qa-active',
+        name: qaConfig.questionTitle || '上台回答問題',
+        count: 1,
+        remaining: 1,
+        color: '#a855f7',
+      };
+    }
+    return currentPrize;
+  }, [drawMode, qaConfig.questionTitle, currentPrize]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
@@ -234,55 +335,108 @@ export const App: React.FC = () => {
       />
 
       {/* Mobile Tab Selector */}
-      <div className="lg:hidden flex border-b border-slate-800 bg-slate-900/90 px-4 py-2 text-xs font-semibold">
+      <div className="lg:hidden flex border-b border-slate-800 bg-slate-900/90 px-4 py-2 text-xs font-semibold overflow-x-auto">
         <button
           onClick={() => setMobileTab('wheel')}
-          className={`flex-1 py-1.5 rounded-lg transition ${
+          className={`flex-1 min-w-[90px] py-1.5 rounded-lg transition ${
             mobileTab === 'wheel' ? 'bg-rose-600 text-white' : 'text-slate-400'
           }`}
         >
-          🎡 抽獎輪盤
+          🎡 抽籤輪盤
         </button>
-        <button
-          onClick={() => setMobileTab('participants')}
-          className={`flex-1 py-1.5 rounded-lg transition ${
-            mobileTab === 'participants' ? 'bg-rose-600 text-white' : 'text-slate-400'
-          }`}
-        >
-          👥 名單 ({participants.filter((p) => !p.isWon).length})
-        </button>
-        <button
-          onClick={() => setMobileTab('prizes')}
-          className={`flex-1 py-1.5 rounded-lg transition ${
-            mobileTab === 'prizes' ? 'bg-rose-600 text-white' : 'text-slate-400'
-          }`}
-        >
-          🎁 獎項 ({prizes.reduce((a, b) => a + b.remaining, 0)})
-        </button>
+
+        {drawMode === 'qa' ? (
+          <button
+            onClick={() => setMobileTab('qa')}
+            className={`flex-1 min-w-[120px] py-1.5 rounded-lg transition ${
+              mobileTab === 'qa' ? 'bg-purple-600 text-white' : 'text-slate-400'
+            }`}
+          >
+            🎤 問答設定 ({qaCandidates.length})
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={() => setMobileTab('participants')}
+              className={`flex-1 min-w-[90px] py-1.5 rounded-lg transition ${
+                mobileTab === 'participants' ? 'bg-rose-600 text-white' : 'text-slate-400'
+              }`}
+            >
+              👥 名單 ({participants.filter((p) => !p.isWon).length})
+            </button>
+            <button
+              onClick={() => setMobileTab('prizes')}
+              className={`flex-1 min-w-[90px] py-1.5 rounded-lg transition ${
+                mobileTab === 'prizes' ? 'bg-rose-600 text-white' : 'text-slate-400'
+              }`}
+            >
+              🎁 獎項 ({prizes.reduce((a, b) => a + b.remaining, 0)})
+            </button>
+          </>
+        )}
       </div>
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Participants Manager */}
-        <div
-          className={`lg:col-span-3 h-[520px] lg:h-[620px] ${
-            mobileTab === 'participants' ? 'block' : 'hidden lg:block'
-          }`}
-        >
-          <ParticipantManager
-            participants={participants}
-            onUpdateParticipants={setParticipants}
-          />
-        </div>
+        {/* Left Column */}
+        {drawMode === 'qa' ? (
+          <div
+            className={`lg:col-span-4 h-[540px] lg:h-[620px] ${
+              mobileTab === 'qa' ? 'block' : 'hidden lg:block'
+            }`}
+          >
+            <QAControlPanel
+              config={qaConfig}
+              onUpdateConfig={setQaConfig}
+              activeCandidates={qaCandidates}
+            />
+          </div>
+        ) : (
+          <div
+            className={`lg:col-span-3 h-[520px] lg:h-[620px] ${
+              mobileTab === 'participants' ? 'block' : 'hidden lg:block'
+            }`}
+          >
+            <ParticipantManager
+              participants={participants}
+              onUpdateParticipants={setParticipants}
+            />
+          </div>
+        )}
 
         {/* Center Column: The Lucky Wheel Stage */}
         <div
-          className={`lg:col-span-6 flex flex-col items-center justify-center ${
+          className={`${
+            drawMode === 'qa' ? 'lg:col-span-8' : 'lg:col-span-6'
+          } flex flex-col items-center justify-center ${
             mobileTab === 'wheel' ? 'flex' : 'hidden lg:flex'
           }`}
         >
           {/* Current Target Banner */}
-          {drawMode === 'participants' ? (
+          {drawMode === 'qa' ? (
+            <div className="w-full max-w-lg bg-gradient-to-r from-slate-900 via-purple-950/40 to-slate-900 border border-purple-500/40 rounded-2xl p-4 mb-2 shadow-lg flex items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2.5 rounded-xl bg-purple-500/20 text-purple-300 flex-shrink-0">
+                  <Mic className="w-6 h-6 animate-pulse" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[11px] text-purple-300 font-semibold uppercase tracking-wider">
+                    上台回答問題・抽籤點名
+                  </div>
+                  <div className="text-base sm:text-lg font-black text-white truncate">
+                    {qaConfig.questionTitle || '隨機點名回答'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-right flex-shrink-0">
+                <div className="text-[11px] text-slate-400">目前候選</div>
+                <div className="font-mono font-black text-lg text-purple-300">
+                  {qaCandidates.length} 位
+                </div>
+              </div>
+            </div>
+          ) : drawMode === 'participants' ? (
             <div className="w-full max-w-md bg-gradient-to-r from-slate-900 via-rose-950/40 to-slate-900 border border-rose-500/30 rounded-2xl p-3.5 mb-2 shadow-lg flex items-center justify-between">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 flex-shrink-0">
@@ -349,30 +503,38 @@ export const App: React.FC = () => {
             items={wheelItems}
             onFinish={handleWheelFinish}
             disabled={isWheelDisabled}
-            buttonText={drawMode === 'participants' ? '抽中獎人' : '抽大獎'}
+            buttonText={
+              drawMode === 'qa'
+                ? '抽回答者'
+                : drawMode === 'participants'
+                ? '抽中獎人'
+                : '抽大獎'
+            }
           />
         </div>
 
-        {/* Right Column: Prizes Manager */}
-        <div
-          className={`lg:col-span-3 h-[520px] lg:h-[620px] ${
-            mobileTab === 'prizes' ? 'block' : 'hidden lg:block'
-          }`}
-        >
-          <PrizeManager
-            prizes={prizes}
-            selectedPrizeId={selectedPrizeId}
-            onSelectPrize={setSelectedPrizeId}
-            onUpdatePrizes={setPrizes}
-          />
-        </div>
+        {/* Right Column: Prizes Manager (only in non-QA modes) */}
+        {drawMode !== 'qa' && (
+          <div
+            className={`lg:col-span-3 h-[520px] lg:h-[620px] ${
+              mobileTab === 'prizes' ? 'block' : 'hidden lg:block'
+            }`}
+          >
+            <PrizeManager
+              prizes={prizes}
+              selectedPrizeId={selectedPrizeId}
+              onSelectPrize={setSelectedPrizeId}
+              onUpdatePrizes={setPrizes}
+            />
+          </div>
+        )}
       </main>
 
       {/* Winner Celebration Modal */}
       <WinnerModal
         isOpen={winnerModalOpen}
         winnerItem={lastWinnerItem}
-        currentPrize={currentPrize}
+        currentPrize={modalPrize}
         mode={drawMode}
         onClose={() => setWinnerModalOpen(false)}
         onConfirmRemoveWinner={handleConfirmRemoveWinner}

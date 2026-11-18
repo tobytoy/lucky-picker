@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Trophy, Sparkles, UserCheck, X, RotateCcw } from 'lucide-react';
+import { Trophy, Sparkles, UserCheck, X, RotateCcw, Mic } from 'lucide-react';
 import { soundManager } from '../utils/audio';
 import { fireCelebrationConfetti } from '../utils/confetti';
 import { WheelItem } from './Wheel';
@@ -9,7 +9,7 @@ interface WinnerModalProps {
   isOpen: boolean;
   winnerItem: WheelItem | null;
   currentPrize?: Prize | null;
-  mode: 'participants' | 'prizes';
+  mode: 'participants' | 'prizes' | 'qa';
   onClose: () => void;
   onConfirmRemoveWinner?: () => void;
   onKeepWinner?: () => void;
@@ -44,24 +44,49 @@ export const WinnerModal: React.FC<WinnerModalProps> = ({
           <X className="w-5 h-5" />
         </button>
 
-        {/* Celebration Trophy Icon */}
+        {/* Celebration Trophy / Mic Icon */}
         <div className="relative mx-auto w-20 h-20 mb-4 flex items-center justify-center">
           <div className="absolute inset-0 rounded-full bg-amber-500/20 animate-ping" />
-          <div className="relative w-20 h-20 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center shadow-lg shadow-amber-500/40">
-            <Trophy className="w-10 h-10 text-slate-950 animate-bounce" />
+          <div className={`relative w-20 h-20 rounded-full flex items-center justify-center shadow-lg ${
+            mode === 'qa'
+              ? 'bg-gradient-to-tr from-purple-600 to-indigo-400 shadow-purple-500/40'
+              : 'bg-gradient-to-tr from-amber-500 to-yellow-300 shadow-amber-500/40'
+          }`}>
+            {mode === 'qa' ? (
+              <Mic className="w-10 h-10 text-white animate-bounce" />
+            ) : (
+              <Trophy className="w-10 h-10 text-slate-950 animate-bounce" />
+            )}
           </div>
           <Sparkles className="absolute -top-1 -right-1 w-6 h-6 text-yellow-300 animate-pulse" />
         </div>
 
         {/* Title */}
         <h3 className="text-xl sm:text-2xl font-black text-amber-300 tracking-wide uppercase mb-1">
-          🎉 恭喜中獎！ 🎉
+          {mode === 'qa' ? '🎤 請上台回答問題！ 🎤' : '🎉 恭喜中獎！ 🎉'}
         </h3>
-        <p className="text-sm text-slate-400 mb-6">幸運得主出爐，掌聲鼓勵！</p>
+        <p className="text-sm text-slate-400 mb-6">
+          {mode === 'qa' ? '幸運代表出爐，請大家掌聲鼓勵上台！' : '幸運得主出爐，掌聲鼓勵！'}
+        </p>
 
         {/* Winner Highlight Card */}
         <div className="bg-slate-800/90 border border-amber-500/30 rounded-2xl p-5 mb-6 shadow-inner">
-          {mode === 'participants' ? (
+          {mode === 'qa' ? (
+            <>
+              {currentPrize && (
+                <div className="inline-flex items-center gap-2 px-3 py-1 mb-3 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs sm:text-sm font-semibold">
+                  <span>問答主題：</span>
+                  <span className="font-bold text-white">{currentPrize.name}</span>
+                </div>
+              )}
+              <div className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-200 via-pink-300 to-amber-200 py-1 font-mono">
+                {winnerItem.label} 號
+              </div>
+              <div className="text-sm text-slate-300 font-medium mt-1">
+                請帶著自信上台回答問題！
+              </div>
+            </>
+          ) : mode === 'participants' ? (
             <>
               {currentPrize && (
                 <div className="inline-flex items-center gap-2 px-3 py-1 mb-3 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs sm:text-sm font-semibold">
@@ -95,6 +120,35 @@ export const WinnerModal: React.FC<WinnerModalProps> = ({
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-2.5">
+          {mode === 'qa' && (
+            <>
+              {onConfirmRemoveWinner && (
+                <button
+                  onClick={() => {
+                    onConfirmRemoveWinner();
+                    onClose();
+                  }}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-purple-900/40 transition active:scale-95"
+                >
+                  <UserCheck className="w-5 h-5" />
+                  已上台回答（移出點名池，換下一位）
+                </button>
+              )}
+              {onKeepWinner && (
+                <button
+                  onClick={() => {
+                    onKeepWinner();
+                    onClose();
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2 transition"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  放回抽籤池（仍可再次被點）
+                </button>
+              )}
+            </>
+          )}
+
           {mode === 'participants' && onConfirmRemoveWinner && (
             <button
               onClick={() => {
